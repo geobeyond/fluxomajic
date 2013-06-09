@@ -1,3 +1,19 @@
+/*
+ *    GeoTools - The Open Source Java GIS Toolkit
+ *    http://geotools.org
+ *
+ *    (C) 2011, Open Source Geospatial Foundation (OSGeo)
+ *    
+ *    This library is free software; you can redistribute it and/or
+ *    modify it under the terms of the GNU Lesser General Public
+ *    License as published by the Free Software Foundation;
+ *    version 2.1 of the License.
+ *
+ *    This library is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *    Lesser General Public License for more details.
+ */
 package org.geotools.filter.function;
 
 import com.vividsolutions.jts.algorithm.distance.DistanceToPoint;
@@ -24,15 +40,23 @@ import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.opengis.filter.expression.Expression;
 import org.opengis.filter.expression.Literal;
 
+/**
+ *
+ * @author Francesco Bartoli (Geobeyond)
+ */
+
 public class FluxoFilterFunction extends FunctionExpressionImpl implements
         GeometryTransformation {
 
     private static int quadrantSegments = 16;
     private static double mitreLimit = 10.0;
-    public static FunctionName NAME = new FunctionNameImpl("fluxo5", Geometry.class,
+    public static FunctionName NAME = new FunctionNameImpl("fluxo", Geometry.class,
             parameter("geometry", Geometry.class),
             parameter("offset", Double.class),
-            parameter("width", Double.class));
+            parameter("width", Double.class),
+            parameter("quadseg", Integer.class),
+            parameter("endcap", Integer.class),
+            parameter("join", Integer.class));
 
     public FluxoFilterFunction() {
         super(NAME);
@@ -46,7 +70,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
 
     @Override
     public int getArgCount() {
-        return 3;
+        return 6;
     }
 
     @Override
@@ -62,19 +86,46 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         if (width == null) {
             width = 0d;
         }
+        
+        Integer quadseg = getExpression(3).evaluate(feature, Integer.class);
+        if (quadseg == null) {
+            quadseg = quadrantSegments;
+        }
+        
+        Integer endcap = getExpression(4).evaluate(feature, Integer.class);
+        if (endcap == 2) {
+            endcap = BufferParameters.CAP_FLAT;
+        }
+        if (endcap == 3) {
+            endcap = BufferParameters.CAP_SQUARE;
+        }
+        else {
+            endcap = BufferParameters.CAP_ROUND;
+        }
+        
+        Integer join = getExpression(5).evaluate(feature, Integer.class);
+        if (join == 2) {
+            join = BufferParameters.JOIN_MITRE;
+        }
+        if (join == 3) {
+            join = BufferParameters.JOIN_BEVEL;
+        }
+        else {
+            join = BufferParameters.JOIN_ROUND;
+        }
 
         BufferParameters bufferparams = new BufferParameters();
         bufferparams.setSingleSided(false);
-        bufferparams.setEndCapStyle(BufferParameters.CAP_ROUND);
-        bufferparams.setJoinStyle(BufferParameters.JOIN_ROUND);
-        bufferparams.setQuadrantSegments(quadrantSegments);
+        bufferparams.setEndCapStyle(endcap);
+        bufferparams.setJoinStyle(join);
+        bufferparams.setQuadrantSegments(quadseg);
         bufferparams.setMitreLimit(mitreLimit);
 
-        Geometry ret = bufferWithParams(offsetCurve(geom, offset, bufferparams, false), width, quadrantSegments, BufferParameters.CAP_ROUND, BufferParameters.JOIN_ROUND, mitreLimit);
+        Geometry ret = bufferWithParams(offsetCurve(geom, offset, bufferparams, false, bufferparams.getQuadrantSegments()), width, bufferparams.getQuadrantSegments(), BufferParameters.CAP_ROUND, BufferParameters.JOIN_ROUND, mitreLimit);
         return ret;
     }
 
-    private Geometry offsetCurve(Geometry geometry, double d, BufferParameters parameters, Boolean roughOffsetCurve) {
+    private Geometry offsetCurve(Geometry geometry, double d, BufferParameters parameters, Boolean roughOffsetCurve, Integer qS) {
         GeometryFactory gf = geometry.getFactory();
         // If "geometry" is a surface, process its boundary
         if (geometry.getDimension() == 2) {
@@ -85,25 +136,25 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         if (roughOffsetCurve) {
             addRoughOffsetCurves(offsetCurves, geometry, parameters, d);
         } else {
-            addCleanOffsetCurves(offsetCurves, geometry, parameters, d);
+            addCleanOffsetCurves(offsetCurves, geometry, parameters, d, qS);
         }
         return gf.buildGeometry(offsetCurves);
     }
 
-    private void addCleanOffsetCurves(Collection offsetCurves, Geometry sourceCurve, BufferParameters parameters, Double offsetDistance) {
+    private void addCleanOffsetCurves(Collection offsetCurves, Geometry sourceCurve, BufferParameters parameters, Double offsetDistance, Integer qS) {
         parameters.setSingleSided(true);
-        parameters.setQuadrantSegments(quadrantSegments);
+        parameters.setQuadrantSegments(qS);
         Geometry sidedBuffer = new BufferOp(sourceCurve, parameters)
                 .getResultGeometry(offsetDistance)
                 .getBoundary();
         Collection offsetSegments = new ArrayList();
         // Segments located entirely under this distance are excluded
-        double lowerBound = Math.abs(offsetDistance) * Math.sin(Math.PI / (4 * quadrantSegments));
+        double lowerBound = Math.abs(offsetDistance) * Math.sin(Math.PI / (4 * qS));
         // Segments located entirely over this distance are included
         // note that the theoretical approximation made with quadrantSegments
         // is offset*cos(PI/(4*quadrantSegments) but offset*cos(PI/(2*quadrantSegments)
         // is used to make sure to include segments located on the boundary
-        double upperBound = Math.abs(offsetDistance) * Math.cos(Math.PI / (2 * quadrantSegments));
+        double upperBound = Math.abs(offsetDistance) * Math.cos(Math.PI / (2 * qS));
         for (int i = 0; i < sidedBuffer.getNumGeometries(); i++) {
             Coordinate[] cc = sidedBuffer.getGeometryN(i).getCoordinates();
             PointPairDistance ppd = new PointPairDistance();
