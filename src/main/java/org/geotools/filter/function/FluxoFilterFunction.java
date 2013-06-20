@@ -127,7 +127,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         bufferparams.setQuadrantSegments(quadseg);
         bufferparams.setMitreLimit(mitreLimit);
 
-        Geometry ret = bufferWithParams(offsetCurve(geom, offset, bufferparams, false, bufferparams.getQuadrantSegments()), width, bufferparams.getQuadrantSegments(), BufferParameters.CAP_ROUND, BufferParameters.JOIN_ROUND, mitreLimit);
+        Geometry ret = bufferWithParams(offsetCurve(geom, offset, bufferparams, false, bufferparams.getQuadrantSegments()), width, bufferparams.getQuadrantSegments(), bufferparams.getEndCapStyle(), bufferparams.getJoinStyle(), mitreLimit);
         return ret;
     }
 
