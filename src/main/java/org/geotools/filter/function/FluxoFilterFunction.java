@@ -93,7 +93,10 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         }
         
         Integer endcap = getExpression(4).evaluate(feature, Integer.class);
-        if (endcap == 2) {
+        if (endcap == null) {
+            endcap = BufferParameters.CAP_ROUND;
+        }
+        else if (endcap == 2) {
             endcap = BufferParameters.CAP_FLAT;
         }
         else if (endcap == 3) {
@@ -104,7 +107,10 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         }
         
         Integer join = getExpression(5).evaluate(feature, Integer.class);
-        if (join == 2) {
+        if (join == null) {
+            join = BufferParameters.JOIN_ROUND;
+        }
+        else if (join == 2) {
             join = BufferParameters.JOIN_MITRE;
         }
         else if (join == 3) {
