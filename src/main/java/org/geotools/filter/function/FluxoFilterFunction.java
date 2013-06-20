@@ -96,7 +96,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         if (endcap == 2) {
             endcap = BufferParameters.CAP_FLAT;
         }
-        if (endcap == 3) {
+        else if (endcap == 3) {
             endcap = BufferParameters.CAP_SQUARE;
         }
         else {
@@ -107,7 +107,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         if (join == 2) {
             join = BufferParameters.JOIN_MITRE;
         }
-        if (join == 3) {
+        else if (join == 3) {
             join = BufferParameters.JOIN_BEVEL;
         }
         else {
