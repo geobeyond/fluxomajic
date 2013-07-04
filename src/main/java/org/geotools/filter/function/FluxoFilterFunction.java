@@ -35,16 +35,20 @@ import com.vividsolutions.jts.operation.linemerge.LineMerger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import org.geotools.geometry.DirectPosition2D;
 import org.geotools.geometry.jts.JTS;
 import org.geotools.geometry.jts.ReferencedEnvelope;
+import org.geotools.referencing.CRS;
+import org.geotools.referencing.GeodeticCalculator;
 import org.opengis.filter.expression.Expression;
 import org.opengis.filter.expression.Literal;
+import org.opengis.referencing.crs.CoordinateReferenceSystem;
+import org.opengis.referencing.operation.TransformException;
 
 /**
  *
  * @author Francesco Bartoli (Geobeyond)
  */
-
 public class FluxoFilterFunction extends FunctionExpressionImpl implements
         GeometryTransformation {
 
@@ -70,7 +74,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
 
     @Override
     public int getArgCount() {
-        return 6;
+        return 7;
     }
 
     @Override
@@ -78,47 +82,44 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
 
         Geometry geom = getExpression(0).evaluate(feature, Geometry.class);
 
-        Double offset = getExpression(1).evaluate(feature, Double.class);
-        if (offset == null) {
-            offset = 0d;
+        Double offsetMt = getExpression(1).evaluate(feature, Double.class);
+        if (offsetMt == null) {
+            offsetMt = 0d;
         }
-        Double width = getExpression(2).evaluate(feature, Double.class);
-        if (width == null) {
-            width = 0d;
+        Double widthMt = getExpression(2).evaluate(feature, Double.class);
+        if (widthMt == null) {
+            widthMt = 0d;
         }
-        
+
         Integer quadseg = getExpression(3).evaluate(feature, Integer.class);
         if (quadseg == null) {
             quadseg = quadrantSegments;
         }
-        
+
         Integer endcap = getExpression(4).evaluate(feature, Integer.class);
         if (endcap == null) {
             endcap = BufferParameters.CAP_ROUND;
-        }
-        else if (endcap == 2) {
+        } else if (endcap == 2) {
             endcap = BufferParameters.CAP_FLAT;
-        }
-        else if (endcap == 3) {
+        } else if (endcap == 3) {
             endcap = BufferParameters.CAP_SQUARE;
-        }
-        else {
+        } else {
             endcap = BufferParameters.CAP_ROUND;
         }
-        
+
         Integer join = getExpression(5).evaluate(feature, Integer.class);
         if (join == null) {
             join = BufferParameters.JOIN_ROUND;
-        }
-        else if (join == 2) {
+        } else if (join == 2) {
             join = BufferParameters.JOIN_MITRE;
-        }
-        else if (join == 3) {
+        } else if (join == 3) {
             join = BufferParameters.JOIN_BEVEL;
-        }
-        else {
+        } else {
             join = BufferParameters.JOIN_ROUND;
         }
+
+        double offsetCrs = distanceInCrs(offsetMt, geom);
+        double widthCrs = distanceInCrs(widthMt, geom);
 
         BufferParameters bufferparams = new BufferParameters();
         bufferparams.setSingleSided(false);
@@ -127,7 +128,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         bufferparams.setQuadrantSegments(quadseg);
         bufferparams.setMitreLimit(mitreLimit);
 
-        Geometry ret = bufferWithParams(offsetCurve(geom, offset, bufferparams, false, bufferparams.getQuadrantSegments()), width, bufferparams.getQuadrantSegments(), bufferparams.getEndCapStyle(), bufferparams.getJoinStyle(), mitreLimit);
+        Geometry ret = bufferWithParams(offsetCurve(geom, offsetCrs, bufferparams, false, bufferparams.getQuadrantSegments()), widthCrs, bufferparams.getQuadrantSegments(), bufferparams.getEndCapStyle(), bufferparams.getJoinStyle(), mitreLimit);
         return ret;
     }
 
@@ -288,5 +289,41 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
     public ReferencedEnvelope invert(ReferencedEnvelope renderingEnvelope) {
         Envelope bufferedEnvelope = JTS.toGeometry((Envelope) renderingEnvelope).getEnvelopeInternal();
         return new ReferencedEnvelope(bufferedEnvelope, renderingEnvelope.getCoordinateReferenceSystem());
+    }
+
+    private double distanceInCrs(double inMeters, Geometry geom) {
+        try {
+            double[] refXY = {
+                geom.getCentroid().getCoordinates()[0].x,
+                geom.getCentroid().getCoordinates()[0].y
+            };
+            CoordinateReferenceSystem crs = CRS.decode("EPSG:4326");
+            return distanceInCrs(inMeters, refXY, crs);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return 0d;
+    }
+
+    private double distanceInCrs(double inMeters,
+            double[] refXY,
+            CoordinateReferenceSystem crs) throws TransformException {
+        double dist = 0;
+
+        // calculate the distance in meters of 0.01 * refY in the ref CRS
+        double[] sp = {refXY[0], refXY[1]};
+        double[] dp = {refXY[0], refXY[1] * 1.01};
+
+        GeodeticCalculator gc = new GeodeticCalculator(crs);
+
+        gc.setStartingPosition(new DirectPosition2D(crs, sp[0], sp[1]));
+        gc.setDestinationPosition(new DirectPosition2D(crs, dp[0], dp[1]));
+
+        double refY01InMeters = gc.getOrthodromicDistance();
+
+        // now, calculate the CRS distance as a proportional of 0.01 * refY
+        dist = inMeters * (refXY[1] * 0.01) / refY01InMeters;
+
+        return dist;
     }
 }
