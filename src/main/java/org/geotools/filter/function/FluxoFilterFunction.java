@@ -35,6 +35,8 @@ import com.vividsolutions.jts.operation.linemerge.LineMerger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.geotools.geometry.DirectPosition2D;
 import org.geotools.geometry.jts.JTS;
 import org.geotools.geometry.jts.ReferencedEnvelope;
@@ -42,6 +44,8 @@ import org.geotools.referencing.CRS;
 import org.geotools.referencing.GeodeticCalculator;
 import org.opengis.filter.expression.Expression;
 import org.opengis.filter.expression.Literal;
+import org.opengis.referencing.FactoryException;
+import org.opengis.referencing.NoSuchAuthorityCodeException;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
 import org.opengis.referencing.operation.TransformException;
 
@@ -60,7 +64,11 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
             parameter("width", Double.class),
             parameter("quadseg", Integer.class),
             parameter("endcap", Integer.class),
-            parameter("join", Integer.class));
+            parameter("join", Integer.class),
+            parameter("outputBBOX", ReferencedEnvelope.class),
+            parameter("outputWidth", Integer.class),
+            parameter("outputHeight", Integer.class),
+            parameter("wmsScaleDenom", Integer.class));
 
     public FluxoFilterFunction() {
         super(NAME);
@@ -74,7 +82,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
 
     @Override
     public int getArgCount() {
-        return 7;
+        return 10;
     }
 
     @Override
@@ -117,6 +125,38 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         } else {
             join = BufferParameters.JOIN_ROUND;
         }
+        
+        ReferencedEnvelope outBbox = getExpression(6).evaluate(feature, ReferencedEnvelope.class);
+        if (outBbox == null) {
+            CoordinateReferenceSystem crs;
+            try {
+                crs = CRS.decode("EPSG:4326");
+                outBbox = new ReferencedEnvelope(geom.getEnvelopeInternal().getMinX(),geom.getEnvelopeInternal().getMaxX(),geom.getEnvelopeInternal().getMinY(),geom.getEnvelopeInternal().getMaxY(),crs);
+            } catch (NoSuchAuthorityCodeException ex) {
+                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (FactoryException ex) {
+                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
+        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, outBbox.toString());
+        
+        Integer wmsWidth = getExpression(7).evaluate(feature, Integer.class);
+        if (wmsWidth == null) {
+            wmsWidth = 0;
+        }
+        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsWidth.toString());
+        
+        Integer wmsHeight = getExpression(8).evaluate(feature, Integer.class);
+        if (wmsHeight == null) {
+            wmsHeight = 0;
+        }
+        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsHeight.toString());
+        
+        Integer wmsScale = getExpression(9).evaluate(feature, Integer.class);
+        if (wmsScale == null) {
+            wmsScale = 0;
+        }
+        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsScale.toString());
 
         double offsetCrs = distanceInCrs(offsetMt, geom);
         double widthCrs = distanceInCrs(widthMt, geom);
