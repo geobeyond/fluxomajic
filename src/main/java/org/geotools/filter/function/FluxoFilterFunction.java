@@ -21,6 +21,7 @@ import com.vividsolutions.jts.algorithm.distance.PointPairDistance;
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Envelope;
 import static org.geotools.filter.capability.FunctionNameImpl.*;
+import static org.geotools.renderer.lite.RendererUtilities.calculatePixelsPerMeterRatio;
 import org.geotools.filter.FunctionExpressionImpl;
 import org.geotools.filter.capability.FunctionNameImpl;
 import org.opengis.filter.capability.FunctionName;
@@ -65,10 +66,10 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
             parameter("quadseg", Integer.class),
             parameter("endcap", Integer.class),
             parameter("join", Integer.class),
-            parameter("outputBBOX", ReferencedEnvelope.class),
-            parameter("outputWidth", Integer.class),
-            parameter("outputHeight", Integer.class),
-            parameter("wmsScaleDenom", Integer.class));
+            //parameter("outputBBOX", ReferencedEnvelope.class),
+            //parameter("outputWidth", Integer.class),
+            //parameter("outputHeight", Integer.class),
+            parameter("wmsScaleDenom", Double.class));
 
     public FluxoFilterFunction() {
         super(NAME);
@@ -82,7 +83,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
 
     @Override
     public int getArgCount() {
-        return 10;
+        return 7;
     }
 
     @Override
@@ -90,13 +91,13 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
 
         Geometry geom = getExpression(0).evaluate(feature, Geometry.class);
 
-        Double offsetMt = getExpression(1).evaluate(feature, Double.class);
-        if (offsetMt == null) {
-            offsetMt = 0d;
+        Double offsetPx = getExpression(1).evaluate(feature, Double.class);
+        if (offsetPx == null) {
+            offsetPx = 0d;
         }
-        Double widthMt = getExpression(2).evaluate(feature, Double.class);
-        if (widthMt == null) {
-            widthMt = 0d;
+        Double widthPx = getExpression(2).evaluate(feature, Double.class);
+        if (widthPx == null) {
+            widthPx = 0d;
         }
 
         Integer quadseg = getExpression(3).evaluate(feature, Integer.class);
@@ -126,38 +127,46 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
             join = BufferParameters.JOIN_ROUND;
         }
         
-        ReferencedEnvelope outBbox = getExpression(6).evaluate(feature, ReferencedEnvelope.class);
-        if (outBbox == null) {
-            CoordinateReferenceSystem crs;
-            try {
-                crs = CRS.decode("EPSG:4326");
-                outBbox = new ReferencedEnvelope(geom.getEnvelopeInternal().getMinX(),geom.getEnvelopeInternal().getMaxX(),geom.getEnvelopeInternal().getMinY(),geom.getEnvelopeInternal().getMaxY(),crs);
-            } catch (NoSuchAuthorityCodeException ex) {
-                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
-            } catch (FactoryException ex) {
-                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
-            }
-        }
-        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, outBbox.toString());
+//        ReferencedEnvelope outBBox = getExpression(6).evaluate(feature, ReferencedEnvelope.class);
+//        if (outBBox == null) {
+//            CoordinateReferenceSystem crs;
+//            try {
+//                //Aggiungere il calcolo del CRS a partire dalla lettura dei parametri del WMS
+//                crs = CRS.decode("EPSG:4326");
+//                outBBox = new ReferencedEnvelope(geom.getEnvelopeInternal().getMinX(),geom.getEnvelopeInternal().getMaxX(),geom.getEnvelopeInternal().getMinY(),geom.getEnvelopeInternal().getMaxY(),crs);
+//            } catch (NoSuchAuthorityCodeException ex) {
+//                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
+//            } catch (FactoryException ex) {
+//                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
+//            }
+//        }
+//        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, outBBox.toString());
+//        
+//        Integer wmsWidth = getExpression(7).evaluate(feature, Integer.class);
+//        if (wmsWidth == null) {
+//            wmsWidth = 0;
+//        }
+//        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsWidth.toString());
+//        
+//        Integer wmsHeight = getExpression(8).evaluate(feature, Integer.class);
+//        if (wmsHeight == null) {
+//            wmsHeight = 0;
+//        }
+//        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsHeight.toString());
         
-        Integer wmsWidth = getExpression(7).evaluate(feature, Integer.class);
-        if (wmsWidth == null) {
-            wmsWidth = 0;
-        }
-        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsWidth.toString());
-        
-        Integer wmsHeight = getExpression(8).evaluate(feature, Integer.class);
-        if (wmsHeight == null) {
-            wmsHeight = 0;
-        }
-        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsHeight.toString());
-        
-        Integer wmsScale = getExpression(9).evaluate(feature, Integer.class);
+        Double wmsScale = getExpression(9).evaluate(feature, Double.class);
         if (wmsScale == null) {
-            wmsScale = 0;
+            wmsScale = 0d;
         }
-        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsScale.toString());
-
+        //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsScale.toString());
+                
+        double offsetMt;
+        offsetMt = offsetPx * calculatePixelsPerMeterRatio(wmsScale, null);
+                
+        double widthMt;
+        widthMt = widthPx * calculatePixelsPerMeterRatio(wmsScale, null);
+        //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, Double.toString(widthMt));
+        
         double offsetCrs = distanceInCrs(offsetMt, geom);
         double widthCrs = distanceInCrs(widthMt, geom);
 
