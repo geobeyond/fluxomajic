@@ -33,6 +33,7 @@ import com.vividsolutions.jts.operation.buffer.BufferOp;
 import com.vividsolutions.jts.operation.buffer.BufferParameters;
 import com.vividsolutions.jts.operation.buffer.OffsetCurveBuilder;
 import com.vividsolutions.jts.operation.linemerge.LineMerger;
+import java.awt.geom.AffineTransform;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -43,8 +44,10 @@ import org.geotools.geometry.jts.JTS;
 import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.geotools.referencing.CRS;
 import org.geotools.referencing.GeodeticCalculator;
+import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.opengis.filter.expression.Expression;
 import org.opengis.filter.expression.Literal;
+import org.opengis.geometry.BoundingBox;
 import org.opengis.referencing.FactoryException;
 import org.opengis.referencing.NoSuchAuthorityCodeException;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
@@ -59,6 +62,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
 
     private static int quadrantSegments = 16;
     private static double mitreLimit = 10.0;
+    private static int OGC_DPI = 90;
     public static FunctionName NAME = new FunctionNameImpl("fluxo", Geometry.class,
             parameter("geometry", Geometry.class),
             parameter("offset", Double.class),
@@ -83,7 +87,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
 
     @Override
     public int getArgCount() {
-        return 7;
+        return 10;
     }
 
     @Override
@@ -127,44 +131,46 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
             join = BufferParameters.JOIN_ROUND;
         }
         
-//        ReferencedEnvelope outBBox = getExpression(6).evaluate(feature, ReferencedEnvelope.class);
-//        if (outBBox == null) {
-//            CoordinateReferenceSystem crs;
-//            try {
-//                //Aggiungere il calcolo del CRS a partire dalla lettura dei parametri del WMS
-//                crs = CRS.decode("EPSG:4326");
-//                outBBox = new ReferencedEnvelope(geom.getEnvelopeInternal().getMinX(),geom.getEnvelopeInternal().getMaxX(),geom.getEnvelopeInternal().getMinY(),geom.getEnvelopeInternal().getMaxY(),crs);
-//            } catch (NoSuchAuthorityCodeException ex) {
-//                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
-//            } catch (FactoryException ex) {
-//                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
-//            }
-//        }
-//        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, outBBox.toString());
-//        
-//        Integer wmsWidth = getExpression(7).evaluate(feature, Integer.class);
-//        if (wmsWidth == null) {
-//            wmsWidth = 0;
-//        }
-//        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsWidth.toString());
-//        
-//        Integer wmsHeight = getExpression(8).evaluate(feature, Integer.class);
-//        if (wmsHeight == null) {
-//            wmsHeight = 0;
-//        }
-//        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsHeight.toString());
+        ReferencedEnvelope outBBox = getExpression(6).evaluate(feature, ReferencedEnvelope.class);
+        if (outBBox == null) {
+            CoordinateReferenceSystem crs;
+            try {
+                //Aggiungere il calcolo del CRS a partire dalla lettura dei parametri del WMS
+                crs = CRS.decode("EPSG:4326");
+                outBBox = new ReferencedEnvelope(geom.getEnvelopeInternal().getMinX(),geom.getEnvelopeInternal().getMaxX(),geom.getEnvelopeInternal().getMinY(),geom.getEnvelopeInternal().getMaxY(),crs);
+            } catch (NoSuchAuthorityCodeException ex) {
+                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (FactoryException ex) {
+                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
+        //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, outBBox.toString());
+        
+        Integer wmsWidth = getExpression(7).evaluate(feature, Integer.class);
+        if (wmsWidth == null) {
+            wmsWidth = 0;
+        }
+        //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsWidth.toString());
+        
+        Integer wmsHeight = getExpression(8).evaluate(feature, Integer.class);
+        if (wmsHeight == null) {
+            wmsHeight = 0;
+        }
+        //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsHeight.toString());
         
         Double wmsScale = getExpression(9).evaluate(feature, Double.class);
         if (wmsScale == null) {
             wmsScale = 0d;
         }
         //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, wmsScale.toString());
-                
+        
         double offsetMt;
-        offsetMt = offsetPx * calculatePixelsPerMeterRatio(wmsScale, null);
+        //offsetMt = offsetPx * calculatePixelsPerMeterRatio(wmsScale, null);
+        offsetMt = pixeltometer(outBBox, wmsWidth, wmsHeight, offsetPx);
                 
         double widthMt;
-        widthMt = widthPx * calculatePixelsPerMeterRatio(wmsScale, null);
+        //widthMt = widthPx * calculatePixelsPerMeterRatio(wmsScale, null);
+        widthMt = pixeltometer(outBBox, wmsWidth, wmsHeight, widthPx);
         //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, Double.toString(widthMt));
         
         double offsetCrs = distanceInCrs(offsetMt, geom);
@@ -374,5 +380,44 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         dist = inMeters * (refXY[1] * 0.01) / refY01InMeters;
 
         return dist;
+    }
+    private double pixelSize(ReferencedEnvelope outputEnv, int outputWidth, int outputHeight)
+    {
+        // error-proofing
+        if (outputEnv.getWidth() <= 0) return 0;
+        // assume view is isotropic
+        return outputWidth / outputEnv.getWidth();
+    }
+    private double pixeltometer(ReferencedEnvelope outputEnv, int outputWidth, int outputHeight, double pixel_distance)
+    {
+        double pixel_distance_m;
+        double pixel_diag_distance;
+        double pixel_diag_distance_m; 
+        
+        pixel_diag_distance = Math.sqrt((outputWidth * outputWidth)
+                                      + (outputHeight * outputHeight));
+        pixel_diag_distance_m = getGeodeticSegmentLength(outputEnv.getMinX(), outputEnv.getMinY(), outputEnv.getMaxX(), outputEnv.getMaxY());
+        pixel_distance_m = pixel_diag_distance_m * pixel_distance / pixel_diag_distance;
+        return pixel_distance_m;
+        
+    }
+    private static double getGeodeticSegmentLength(double minx, double miny, double maxx, double maxy) {
+        final GeodeticCalculator calculator = new GeodeticCalculator(DefaultGeographicCRS.WGS84);
+        double rminx = rollLongitude(minx);
+        double rminy = rollLatitude(miny);
+        double rmaxx = rollLongitude(maxx);
+        double rmaxy = rollLatitude(maxy);
+        calculator.setStartingGeographicPoint(rminx, rminy);
+        calculator.setDestinationGeographicPoint(rmaxx, rmaxy);
+        return calculator.getOrthodromicDistance();
+    }
+    protected static double rollLongitude(final double x) {
+        double rolled = x - (((int) (x + Math.signum(x) * 180)) / 360) * 360.0;
+        return rolled;
+    }
+    
+    protected static double rollLatitude(final double x) {
+        double rolled = x - (((int) (x + Math.signum(x) * 90)) / 180) * 180.0;
+        return rolled;
     }
 }
