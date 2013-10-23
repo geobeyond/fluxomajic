@@ -28,6 +28,8 @@ import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.GeometryFactory;
 import com.vividsolutions.jts.geom.LineString;
 import com.vividsolutions.jts.geomgraph.Position;
+import com.vividsolutions.jts.io.ParseException;
+import com.vividsolutions.jts.io.WKTReader;
 import com.vividsolutions.jts.operation.buffer.BufferOp;
 import com.vividsolutions.jts.operation.buffer.BufferParameters;
 import com.vividsolutions.jts.operation.buffer.OffsetCurveBuilder;
@@ -37,17 +39,20 @@ import java.util.Collection;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.geotools.factory.Hints;
 import org.geotools.geometry.DirectPosition2D;
 import org.geotools.geometry.jts.JTS;
 import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.geotools.referencing.CRS;
 import org.geotools.referencing.GeodeticCalculator;
+import org.geotools.referencing.ReferencingFactoryFinder;
 import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.opengis.filter.expression.Expression;
 import org.opengis.filter.expression.Literal;
 import org.opengis.geometry.MismatchedDimensionException;
 import org.opengis.referencing.FactoryException;
 import org.opengis.referencing.NoSuchAuthorityCodeException;
+import org.opengis.referencing.crs.CRSAuthorityFactory;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
 import org.opengis.referencing.operation.MathTransform;
 import org.opengis.referencing.operation.TransformException;
@@ -166,40 +171,42 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
             wmsHeight = 0;
         }
         
-        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, "valore letto dalla geometria del db CRS:{0}", ((CoordinateReferenceSystem) geom.getUserData()).toString());
-        
-        Geometry finalGeom = null;
-        try {
-            finalGeom = transfGeom(geom, outCRS);
-        } catch (NoSuchAuthorityCodeException ex) {
-            Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (FactoryException ex) {
-            Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (MismatchedDimensionException ex) {
-            Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (TransformException ex) {
-            Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
-        }
+        //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, "valore letto dalla geometria del db CRS:{0}", ((CoordinateReferenceSystem) geom.getUserData()).toString());       
         
         //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, "valore SRID letto dalla finalGeom SRS:{0}", ((CoordinateReferenceSystem) finalGeom.getUserData()).toString());
         
         ReferencedEnvelope outBBox = getExpression(10).evaluate(feature, ReferencedEnvelope.class);
         if (outBBox == null) {
-            outBBox = new ReferencedEnvelope(finalGeom.getEnvelopeInternal().getMinX(),finalGeom.getEnvelopeInternal().getMaxX(),finalGeom.getEnvelopeInternal().getMinY(),finalGeom.getEnvelopeInternal().getMaxY(),outCRS);
+            outBBox = new ReferencedEnvelope(geom.getEnvelopeInternal().getMinX(),geom.getEnvelopeInternal().getMaxX(),geom.getEnvelopeInternal().getMinY(),geom.getEnvelopeInternal().getMaxY(),(CoordinateReferenceSystem) geom.getUserData());
         }
-        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, outBBox.toString());
+        //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, outBBox.toString());
+        
+        ReferencedEnvelope tre = null;
+        try {
+            tre = transfEnvelope(outBBox, (CoordinateReferenceSystem) geom.getUserData());
+        } catch (TransformException ex) {
+            Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (FactoryException ex) {
+            Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.SEVERE, null, ex);
+        }
         
         double offsetMt;
-        offsetMt = pixelToMeter(outBBox, wmsWidth, wmsHeight, offsetPx, outCRS);
+        offsetMt = pixelToMeter(tre, wmsWidth, wmsHeight, offsetPx);
+        //offsetMt = pixelToMeter(outBBox, wmsWidth, wmsHeight, offsetPx);
                 
         double widthMt;
-        widthMt = pixelToMeter(outBBox, wmsWidth, wmsHeight, widthPx, outCRS);
+        widthMt = pixelToMeter(tre, wmsWidth, wmsHeight, widthPx);
+        //widthMt = pixelToMeter(outBBox, wmsWidth, wmsHeight, widthPx);
         //Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, Double.toString(widthMt));
  
         
-        double offsetCrs = distanceInCrs(offsetMt, finalGeom, outCRS);
-        double widthCrs = distanceInCrs(widthMt, finalGeom, outCRS);
+        //double offsetCrs = distanceInCrs(offsetMt, geom, outCRS);
+        double offsetCrs = distanceInCrs(offsetMt, geom, (CoordinateReferenceSystem) geom.getUserData());
+        //double widthCrs = distanceInCrs(widthMt, geom, outCRS);
+        double widthCrs = distanceInCrs(widthMt, geom, (CoordinateReferenceSystem) geom.getUserData());
 
+        //Hints.putSystemDefault(Hints.FORCE_LONGITUDE_FIRST_AXIS_ORDER, Boolean.TRUE);
+        
         BufferParameters bufferparams = new BufferParameters();
         bufferparams.setSingleSided(true);//metti false qui e inserisci la dichiarazione direttamente nella funzione privata
         bufferparams.setEndCapStyle(endcap);
@@ -209,9 +216,9 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
 
         Geometry ret = null;
         if (doTravelLeft(dMode)) {
-            ret = bufferWithParams(offsetCurve(finalGeom, -offsetCrs, bufferparams, false, bufferparams.getQuadrantSegments()), widthCrs, false, bufferparams.getQuadrantSegments(), endcap, join, mitreLimit);
+            ret = bufferWithParams(offsetCurve(geom, -offsetCrs, bufferparams, false, bufferparams.getQuadrantSegments()), widthCrs, false, bufferparams.getQuadrantSegments(), endcap, join, mitreLimit);
         } else {
-            ret = bufferWithParams(offsetCurve(finalGeom, offsetCrs, bufferparams, false, bufferparams.getQuadrantSegments()), widthCrs, false, bufferparams.getQuadrantSegments(), endcap, join, mitreLimit);
+            ret = bufferWithParams(offsetCurve(geom, offsetCrs, bufferparams, false, bufferparams.getQuadrantSegments()), widthCrs, false, bufferparams.getQuadrantSegments(), endcap, join, mitreLimit);
         }
         return ret;
     }
@@ -430,7 +437,7 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         // assume view is isotropic
         return outputWidth / outputEnv.getWidth();
     }
-    private double pixelToMeter(ReferencedEnvelope outputEnv, int outputWidth, int outputHeight, double pixel_distance, CoordinateReferenceSystem crs)
+    private double pixelToMeter(ReferencedEnvelope outputEnv, int outputWidth, int outputHeight, double pixel_distance)
     {
         double pixel_distance_m;
         double pixel_diag_distance;
@@ -438,14 +445,13 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
         
         pixel_diag_distance = Math.sqrt((outputWidth * outputWidth)
                                       + (outputHeight * outputHeight));
-        pixel_diag_distance_m = getGeodeticSegmentLength(outputEnv.getMinX(), outputEnv.getMinY(), outputEnv.getMaxX(), outputEnv.getMaxY(), crs);
+        pixel_diag_distance_m = getGeodeticSegmentLength(outputEnv.getMinX(), outputEnv.getMinY(), outputEnv.getMaxX(), outputEnv.getMaxY());
         pixel_distance_m = pixel_diag_distance_m * pixel_distance / pixel_diag_distance;
         return pixel_distance_m;
         
     }
-    private static double getGeodeticSegmentLength(double minx, double miny, double maxx, double maxy, CoordinateReferenceSystem crs) {
+    private static double getGeodeticSegmentLength(double minx, double miny, double maxx, double maxy) {
         final GeodeticCalculator calculator = new GeodeticCalculator(DefaultGeographicCRS.WGS84);
-        //final GeodeticCalculator calculator = new GeodeticCalculator(crs);
         double rminx = rollLongitude(minx);
         double rminy = rollLatitude(miny);
         double rmaxx = rollLongitude(maxx);
@@ -468,17 +474,17 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
      * Returns a geometry based on the transformation from a source geometry CRS to a defined target CRS.
      * 
      */
-    private Geometry transfGeom(Geometry g, CoordinateReferenceSystem outputCRS) throws NoSuchAuthorityCodeException, FactoryException, MismatchedDimensionException, TransformException {
-        CoordinateReferenceSystem srcCRS = null;
+    private Geometry transfGeom(Geometry g, CoordinateReferenceSystem outputCRS) throws TransformException, NoSuchAuthorityCodeException, FactoryException {
         
-        if (srcCRS == null) {
-            try {
-                srcCRS = (CoordinateReferenceSystem) g.getUserData();
-                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, "valore srcCRS letto dalla geometria sorgente CRS:{0}", srcCRS.toString());
-            } catch (Exception e) {
-                // may not have a CRS attached
-            }
-        }
+//        CoordinateReferenceSystem srcCRS = null;
+//        if (srcCRS == null) {
+//            try {
+//                srcCRS = (CoordinateReferenceSystem) g.getUserData();
+//                Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, "valore srcCRS letto dalla geometria sorgente CRS:{0}", srcCRS.toString());
+//            } catch (Exception e) {
+//                // may not have a CRS attached
+//            }
+//        }
 //        if (srcCRS == null && g.getSRID() > 0) {
 //            try {
 //                srcCRS = CRS.decode("EPSG:" + g.getSRID());
@@ -488,15 +494,24 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
 //            }
 //        }
         //try to force getting source/dest CRS
-        srcCRS = CRS.decode("EPSG:4326");
-        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, "valore forzato del CRS sorgente:{0}", srcCRS.toString());
-        outputCRS = CRS.decode("EPSG:900913");
-        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, "valore forzato del CRS di output:{0}", outputCRS.toString());
+        Hints hints = new Hints(Hints.FORCE_LONGITUDE_FIRST_AXIS_ORDER, Boolean.TRUE);
+        CRSAuthorityFactory factory = ReferencingFactoryFinder.getCRSAuthorityFactory("EPSG", hints);
+        CoordinateReferenceSystem srcCRS = factory.createCoordinateReferenceSystem("EPSG:4326");
+//        srcCRS = CRS.decode("EPSG:4326");
+//        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, "valore forzato del CRS sorgente:{0}", srcCRS.toString());
+        outputCRS = factory.createCoordinateReferenceSystem("EPSG:900913");
+//        outputCRS = CRS.decode("EPSG:900913");
+//        Logger.getLogger(FluxoFilterFunction.class.getName()).log(Level.INFO, "valore forzato del CRS di output:{0}", outputCRS.toString());
         MathTransform transform;
         transform = CRS.findMathTransform(srcCRS, outputCRS, false);
         Geometry trgGeom = JTS.transform(g, transform);
         
         return trgGeom;
+    }
+    private ReferencedEnvelope transfEnvelope(ReferencedEnvelope re, CoordinateReferenceSystem targetCRS) throws TransformException, FactoryException {
+        ReferencedEnvelope result = null;
+        result = re.transform(targetCRS, true, 10);
+        return result;
     }
     private Boolean doTravelLeft(Integer i) {
         if (i == 1) return true; 
