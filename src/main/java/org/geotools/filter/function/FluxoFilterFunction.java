@@ -209,6 +209,9 @@ public class FluxoFilterFunction extends FunctionExpressionImpl implements
             } else {
                 ret = bufferWithParams(offsetCurve(geom, offsetCrs, bufferparams, false, bufferparams.getQuadrantSegments()), widthCrs, false, bufferparams.getQuadrantSegments(), endcap, join, mitreLimit);
             }
+            //if ((System.currentTimeMillis()%10)==0) {
+            //    throw new Exception("Simple test ...");
+            //}
             return ret;
 
         } catch (Exception ex) {
