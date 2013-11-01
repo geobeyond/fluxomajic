@@ -13,7 +13,7 @@ Fluxomajic is a GeoServer plugin developed as a new pluggable SLD geometry trans
 
 The output is a new polygonal geometry that follows the shape of the source linestrings directly in your WMS request:
 
-![fluxomajic shaped traffic layer](https://github.com/geobeyond/fluxomajic/blob/master/img/fluxomajic.jpg "fluxomajic behavior")
+![fluxomajic shaped traffic layer](https://raw.github.com/geobeyond/fluxomajic/master/img/fluxomajic.jpg "fluxomajic behavior")
 
 ## How to build
 
