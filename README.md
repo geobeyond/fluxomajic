@@ -17,7 +17,7 @@ The output is a new polygonal geometry that follows the shape of the source line
 
 ## How to build
 
-1. Make sure each dependency in the POM is aligned with the Geotools version used in your GeoServer. As an example version 9.0 for GeoServer 2.3:
++ Make sure each dependency in the POM is aligned with the Geotools version used in your GeoServer. As an example version 9.0 for GeoServer 2.3:
 
 ```xml
 	<dependency>
@@ -28,7 +28,7 @@ The output is a new polygonal geometry that follows the shape of the source line
 ```
 
 
-2. Use Maven to build
++ Use Maven to build
 
 ```bash
 	mvn clean install
