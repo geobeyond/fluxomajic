@@ -33,3 +33,6 @@ The output is a new polygonal geometry that follows the shape of the source line
 ```bash
 	mvn clean install
 ```
+
+## Credits
+The module has been funded by [SISTeMA ITS](http://www.sistemaits.com/). Major credits go to [Michaël Michaud](http://geo.michaelm.free.fr/) and his development of [OpenJUMP](http://www.openjump.org/) offset curve plugin that has been ported to this module.
